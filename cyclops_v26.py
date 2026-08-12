@@ -1982,7 +1982,7 @@ def handle_14c(atm, dc14, param, geo):
                 param.Q14.Dt = -1
                 param.Q14.yrstep = 0
 
-        param.Q14.prod = param.Q14.Qnode + param.Q14.DQ * (param.Q14.yrstep / param.Q14.Dt if param.Q14.Dt != 0 else 0)
+        param.Q14.prod = param.Q14.Qnode + param.Q14.DQ * (param.Q14.yrstep / param.Q14.Dt if param.Q14.Dt != 0)
         param.Q14.yrstep += 1
 
     # C14 production
@@ -2741,7 +2741,7 @@ def _manager_behaviour2(i, ocean, param, olddV, oldVolume, oldomzV, oldanoxV, dV
     """Manager behaviour 2: both OMZ and ANOX sub-volumes exist."""
     tracer = ocean.tracer
     box = ocean.box
-    TIMESTEP = 1.0
+    
 
     # Cross-section geometry (ellipsoidal)
     depth_range = box.bottom[i] - box.top[i]
@@ -2901,7 +2901,7 @@ def _manager_behaviour3(i, ocean, param, olddV, oldVolume, oldomzV, dV, VolFract
     """Manager behaviour 3: OMZ forms for first time (no ANOX yet)."""
     tracer = ocean.tracer
     box = ocean.box
-    TIMESTEP = 1.0
+    
 
     Volume_new = box.completeVolume[i] - dV
     omzV = dV
