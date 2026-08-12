@@ -2025,12 +2025,13 @@ def ox_exchange(tracer, box):
         S = tracer.Sal[i]
         Ts = np.log((298.15 - T) / (273.15 + T))
         if Ts > 0:
-            V1 = (A0 + A1*Ts + A2*Ts**2 + A3*Ts**2 + A3*Ts**3
+            V1 = (A0 + A1*Ts + A2*Ts**2 + A3*Ts**3
                   + A4*Ts**4 + A5*Ts**5
                   + S*(B0 + B1*Ts + B2*Ts**2 + B3*Ts**3) + C0*S**2)
         else:
             aTs = abs(Ts)
-            V1 = (A0 - A1*aTs + A2*aTs**2 + A3*aTs**2 - A3*aTs**3
+            # Same polynomial as above, it just negates odd powers to keep signs in line 
+            V1 = (A0 - A1*aTs + A2*aTs**2 - A3*aTs**3
                   + A4*aTs**4 - A5*aTs**5
                   + S*(B0 - B1*aTs + B2*aTs**2 - B3*aTs**3) + C0*S**2)
         box.OxSat[i] = np.exp(V1)  # µmol/kg (CY2SW units)
