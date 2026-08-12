@@ -2041,36 +2041,6 @@ def ox_exchange(tracer, box):
             tracer.O218[i] = tracer.O2[i] * IsoConcPDB(24.7)
 
 
-#::
-#:: --- def iso_solids ---
-#:: Isotope bookkeeping for solid (CaCO3) phases.
-def iso_solids(tracer, box, param):
-    """Calculate isotope composition of sinking organic particles (del15Norg, del18ONorg).
-    Must be called after FindIsoR equivalent for C isotopes, before production sub-stepping."""
-    alphaN15 = param.alphaN15org
-    alphaNO18 = param.alphaNO18org
-    for i in range(8):
-        if box.top[i] < 1.0:
-            # d15N of organic matter
-            if tracer.N[i] > 0:
-                F15 = tracer.N15[i] / tracer.N[i]
-                R15 = alphaN15 * F15 / (1.0 - F15)
-                box.Production_d15Norg = getattr(box, 'Production_d15Norg', np.zeros(8))
-                box.Production_d15Norg[i] = ((R15 - RAIR) / RAIR) * 1000.0
-            else:
-                box.Production_d15Norg = getattr(box, 'Production_d15Norg', np.zeros(8))
-                box.Production_d15Norg[i] = 0.0
-
-            # d18O of organic nitrate (using Rpdb standard)
-            if tracer.N[i] > 0:
-                F18 = tracer.NO18[i] / tracer.N[i]
-                R18 = alphaNO18 * F18 / (1.0 - F18)
-                box.Production_d18ONorg = getattr(box, 'Production_d18ONorg', np.zeros(8))
-                box.Production_d18ONorg[i] = ((R18 - RPDB) / RPDB) * 1000.0
-            else:
-                box.Production_d18ONorg = getattr(box, 'Production_d18ONorg', np.zeros(8))
-                box.Production_d18ONorg[i] = 0.0
-
 
 #::
 #:: ############################################################################################
