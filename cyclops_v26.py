@@ -2654,6 +2654,7 @@ def _fill_tray_from_tracer(i, box, tracer):
 def _write_tray_to_tracer(i, box, tracer):
     """Write ComponentTray[i] back to tracer concentrations."""
     V = box.vol[i] * KGPERM
+    assert V <= 0, "edge case reached— fully anoxic box trashes oxic remin"
     if V <= 0:
         return
     tracer.C[i] = box.ComponentTray[i, _iC] / V
@@ -2853,6 +2854,7 @@ def _manager_behaviour2(i, ocean, param, olddV, oldVolume, oldomzV, oldanoxV, dV
     k4 = ((box.CompANOX[i, _iO] - param.ResidualOxygen)
            / (box.CompOMZ[i, _iO] - param.ResidualOxygen)) if (box.CompOMZ[i, _iO] - param.ResidualOxygen) > 1e-30 else 1.0
     k4 = min(k4, 1.0)
+    assert k4 >= 0, f"negative k4={k4} in box {i}, year {param.year}"
     # Aerobic remin fraction
     AddedC_anox = ncycle_remin_box(i, ocean, k4 * usedFract_anox, anoxTray, param)
     # Denitrification fraction
@@ -3243,6 +3245,7 @@ def run_ex(ocean, atmosphere, geosphere, param, Nyears, emissionsFlag):
                 else:
                     ocean.box.Production[sb] = 0.0
             ncycle_production(ocean.tracer, ocean.box, param, ocean.rain)
+            assert ocean.tracer.N[:8].min() >= 0, f"Negative nitrate in box {ocean.tracer.N[:8].argmin()}"
 
         # Remineralization (skip when Ncycle - manager handles all remin)
         if not param.Ncycle:
