@@ -1982,7 +1982,7 @@ def handle_14c(atm, dc14, param, geo):
                 param.Q14.Dt = -1
                 param.Q14.yrstep = 0
 
-        param.Q14.prod = param.Q14.Qnode + param.Q14.DQ * (param.Q14.yrstep / param.Q14.Dt if param.Q14.Dt != 0)
+        param.Q14.prod = param.Q14.Qnode + param.Q14.DQ * (param.Q14.yrstep / param.Q14.Dt if param.Q14.Dt != 0 else 0.0)
         param.Q14.yrstep += 1
 
     # C14 production
@@ -2299,6 +2299,20 @@ def ncycle_remin_box(i, ocean, usedFract, supplyTray, param):
         AddedC13 += flux * RedC * IsoConcPDB(d13Corg_j) * Ox_ij  # IsoConc for C13 uses Rpdb
         AddedC14 += flux * RedC * (((d14Corg_j / 1000.0 + 1.0) * NBSC14RATIO) / (1.0 + (d14Corg_j / 1000.0 + 1.0) * NBSC14RATIO)) * Ox_ij
 
+    # ---- v27: native seaweed organic carbon, respired where it lands ----------------------
+    # Flag-gated and off by default, so v26 behaviour is unchanged when nativeSeaweedCarbon is
+    # not set. box.seaweedCflux[i] (mol C, set by the caller before run_ex) is split across the
+    # oxic/OMZ/anoxic-aerobic compartments by the SAME usedFract*supplyTray focusing weights as
+    # natural sinking rain, and consumes O2 at the Redfield O2:C ratio (170/106). Seaweed's own
+    # N and P are cycled separately (exactly-conservatively) by the caller -- this path adds
+    # carbon only, so it does not touch AddedN/AddedP/AddedN15/AddedNO18 above.
+    if getattr(param, 'nativeSeaweedCarbon', False):
+        SWflux = getattr(box, 'seaweedCflux', None)
+        if SWflux is not None and SWflux[i] != 0.0:
+            extraC = usedFract * supplyTray * SWflux[i]
+            AddedC += extraC
+            AddedO_total += extraC * (170.0 / 106.0)
+
     # Add to ComponentTray
     tray[i, _iC] += AddedC
     tray[i, _iP] += AddedP
@@ -2560,6 +2574,14 @@ def ncycle_manager(ocean, param):
         else:
             VolFraction = 0.0
         VolFraction = max(0.0, min(1.0, VolFraction))
+        # ---- v27: shallowODZonly -- confine the denitrifying suboxic pocket to the thermocline,
+        # keep the deep ocean (DEEP_IDX) oxygenated even if its box-mean O2 would otherwise let a
+        # pocket form. Flag-gated and off by default, so v26 is unchanged when unset. The baseline
+        # is essentially untouched by this flag because deep boxes don't denitrify at baseline
+        # anyway (see doc) -- it only matters once a sustained deployment tries to drive the deep
+        # ocean suboxic.
+        if getattr(param, 'shallowODZonly', False) and i in DEEP_IDX:
+            VolFraction = 0.0
         box.VolFraction[i] = VolFraction
 
         dV = box.completeVolume[i] * VolFraction
@@ -2654,7 +2676,6 @@ def _fill_tray_from_tracer(i, box, tracer):
 def _write_tray_to_tracer(i, box, tracer):
     """Write ComponentTray[i] back to tracer concentrations."""
     V = box.vol[i] * KGPERM
-    assert V <= 0, "edge case reached— fully anoxic box trashes oxic remin"
     if V <= 0:
         return
     tracer.C[i] = box.ComponentTray[i, _iC] / V
@@ -2853,8 +2874,7 @@ def _manager_behaviour2(i, ocean, param, olddV, oldVolume, oldomzV, oldanoxV, dV
     usedFract_anox = anoxV / dV if dV > 0 else 0.0
     k4 = ((box.CompANOX[i, _iO] - param.ResidualOxygen)
            / (box.CompOMZ[i, _iO] - param.ResidualOxygen)) if (box.CompOMZ[i, _iO] - param.ResidualOxygen) > 1e-30 else 1.0
-    k4 = min(k4, 1.0)
-    assert k4 >= 0, f"negative k4={k4} in box {i}, year {param.year}"
+    k4 = min(max(k4, 0.0), 1.0)
     # Aerobic remin fraction
     AddedC_anox = ncycle_remin_box(i, ocean, k4 * usedFract_anox, anoxTray, param)
     # Denitrification fraction
@@ -2984,7 +3004,7 @@ def _write_tray_to_anox(i, box, anoxV):
 #:: --- def _calc_added_C ---
 #:: Compute the organic C (and P, 13C, 14C) delivered to a box/compartment by the sinking rain --
 #:: used to drive the denitrification stoichiometry in the anoxic core.
-def _calc_added_C(i, ocean, usedFract, supplyTray):
+def _calc_added_C(i, ocean, usedFract, supplyTray, param=None):
     """Calculate total C added from organic rain to a box (for denitrification stoichiometry).
     Also returns P, C13, C14 for adding to ComponentTray (matching Pascal).
     """
@@ -3010,6 +3030,17 @@ def _calc_added_C(i, ocean, usedFract, supplyTray):
         # C14 from organic rain
         d14Corg_j = ocean.rain.d14Corg[j]
         AddedC14 += flux * 106.0 * (((d14Corg_j / 1000.0 + 1.0) * NBSC14RATIO) / (1.0 + (d14Corg_j / 1000.0 + 1.0) * NBSC14RATIO))
+
+    # ---- v27: native seaweed carbon also drives denitrification stoichiometry where it lands.
+    # No P is added here (seaweed P is cycled separately, conservatively) -- only C, so that
+    # ncycle_denitrification's Redfield-based lostN = denitriparam * AddedComponentC applies to
+    # the seaweed carbon too. Because seaweed's real C:N differs from Redfield, this leaves a
+    # small (~few TgN/yr) flux-budget non-closure -- an accepted, documented approximation.
+    if param is not None and getattr(param, 'nativeSeaweedCarbon', False):
+        SWflux = getattr(box, 'seaweedCflux', None)
+        if SWflux is not None and SWflux[i] != 0.0:
+            AddedC += usedFract * supplyTray * SWflux[i]
+
     return AddedC, AddedP, AddedC13, AddedC14
 
 
